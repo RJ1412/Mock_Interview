@@ -1,37 +1,42 @@
 "use client";
 
-import { z } from "zod";
-import Link from "next/link";
-import Image from "next/image";
-import { toast } from "sonner";
-import { auth } from "@/firebase/client";
-import { useForm } from "react-hook-form";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
 } from "firebase/auth";
+import { clientAuth } from "@/firebase/client";
 
-import { Form } from "@/components/ui/form";
+// import { signInAction, signUpAction } 
+
+import { toast } from "sonner";
+import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
-
-import { signIn, signUp } from "@/lib/actions/auth.action";
-import FormField from "./FormField";
+import { Form } from "@/components/ui/form";
+import Image from "next/image";
+// import CustomFormField from "./CustomFormField";
+import Link from "next/link";
+import { signInAction, signUpAction } from "@/lib/actions/auth.action";
+import CustomFormField from "./CustomFormField";
 
 const authFormSchema = (type: FormType) => {
   return z.object({
     name: type === "sign-up" ? z.string().min(3) : z.string().optional(),
     email: z.string().email(),
-    password: z.string().min(3),
+    password: z.string().min(8),
   });
 };
 
-const AuthForm = ({ type }: { type: FormType }) => {
+function AuthForm({ type }: { type: FormType }) {
+  const [isLoading, setIsLoading] = useState(false);
+
   const router = useRouter();
 
   const formSchema = authFormSchema(type);
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -41,121 +46,211 @@ const AuthForm = ({ type }: { type: FormType }) => {
     },
   });
 
-  const onSubmit = async (data: z.infer<typeof formSchema>) => {
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    setIsLoading(true);
+
     try {
       if (type === "sign-up") {
-        const { name, email, password } = data;
+        const { name, email, password } = values;
 
+        // Client-side first
+        // Creates the user in Firebase Authentication (using the client SDK)
         const userCredential = await createUserWithEmailAndPassword(
-          auth,
+          clientAuth,
           email,
           password
         );
 
-        const result = await signUp({
+        // Then server-side
+        // A server action that stores/saves additional user data in Firestore
+        const result = await signUpAction({
           uid: userCredential.user.uid,
           name: name!,
           email,
           password,
         });
 
-        if (!result.success) {
-          toast.error(result.message);
+        if (!result?.success) {
+          toast.error(result?.message);
+
           return;
         }
 
-        toast.success("Account created successfully. Please sign in.");
+        toast.success(result?.message);
         router.push("/sign-in");
       } else {
-        const { email, password } = data;
+        const { email, password } = values;
 
+        // Client-side first (same as sign-up)
         const userCredential = await signInWithEmailAndPassword(
-          auth,
+          clientAuth,
           email,
           password
         );
 
+        // Firebase's temporary JWT
         const idToken = await userCredential.user.getIdToken();
+
         if (!idToken) {
-          toast.error("Sign in Failed. Please try again.");
+          toast.error("Login failed!");
+
           return;
         }
 
-        await signIn({
-          email,
-          idToken,
-        });
+        // Then server-side
+        const result = await signInAction({ email, idToken });
 
-        toast.success("Signed in successfully.");
+        if (!result.success) {
+          toast.error(result.message);
+
+          return;
+        }
+
+        toast.success(result.message);
         router.push("/");
       }
-    } catch (error) {
-      console.log(error);
-      toast.error(`There was an error: ${error}`);
+    } catch (err) {
+      const errMsg =
+        err instanceof Error ? err.message : "An unexpected error occurred!";
+      console.error("Error:", errMsg);
+      toast.error(errMsg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const isSignIn = type === "sign-in";
-
   return (
     <div className="card-border lg:min-w-[566px]">
-      <div className="flex flex-col gap-6 card py-14 px-10">
-        <div className="flex flex-row gap-2 justify-center">
-          <Image src="/logo.svg" alt="logo" height={32} width={38} />
-          <h2 className="text-primary-100">PrepWise</h2>
-        </div>
+      <article className="card px-10 py-14 flex flex-col gap-6">
+        <section className="flex justify-center gap-2">
+          <Image src="/logo.svg" alt="PrepByte Logo" width={38} height={32} />
 
-        <h3>Practice job interviews with AI</h3>
+          <h2 className="text-primary-100">PrepByte</h2>
+        </section>
+
+        <h3 className="text-center">
+          {type === "sign-up"
+            ? "Step aboard! Your AI-powered interview journey begins here."
+            : "Welcome back, navigator! Let's chart your next success."}
+        </h3>
 
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="w-full space-y-6 mt-4 form"
+            className="form w-full space-y-6 mt-4"
           >
-            {!isSignIn && (
-              <FormField
-                control={form.control}
+            {type === "sign-up" && (
+              <CustomFormField
                 name="name"
+                control={form.control}
                 label="Name"
-                placeholder="Your Name"
-                type="text"
+                placeholder="Enter your name"
               />
             )}
 
-            <FormField
-              control={form.control}
+            <CustomFormField
+              inputType="email"
               name="email"
-              label="Email"
-              placeholder="Your email address"
-              type="email"
-            />
-
-            <FormField
               control={form.control}
-              name="password"
-              label="Password"
-              placeholder="Enter your password"
-              type="password"
+              label="Email"
+              placeholder="Enter your email"
             />
 
-            <Button className="btn" type="submit">
-              {isSignIn ? "Sign In" : "Create an Account"}
+            <CustomFormField
+              inputType="password"
+              name="password"
+              control={form.control}
+              label="Password"
+              placeholder="Enter a strong password"
+            />
+
+            <Button type="submit" disabled={isLoading} className="btn">
+              {type === "sign-in" ? (
+                isLoading ? (
+                  <>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      role="status"
+                      aria-hidden="true"
+                      className="size-4 animate-spin"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+
+                    <span>Signing in...</span>
+                  </>
+                ) : (
+                  "Sign in"
+                )
+              ) : isLoading ? (
+                <>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
+                    role="status"
+                    aria-hidden="true"
+                    className="size-4 animate-spin"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+
+                  <span>Creating your account...</span>
+                </>
+              ) : (
+                "Create an account"
+              )}
             </Button>
           </form>
         </Form>
 
         <p className="text-center">
-          {isSignIn ? "No account yet?" : "Have an account already?"}
+          <span>
+            {type === "sign-in"
+              ? "Don't have an account?"
+              : "Already have an account?"}
+          </span>
+
           <Link
-            href={!isSignIn ? "/sign-in" : "/sign-up"}
-            className="font-bold text-user-primary ml-1"
+            href={type === "sign-in" ? "/sign-up" : "sign-in"}
+            className="text-primary font-bold ml-1 transition-colors hover:text-primary/80 focus-visible:text-primary/80"
           >
-            {!isSignIn ? "Sign In" : "Sign Up"}
+            {type === "sign-in" ? "Sign up" : "Sign in"}
           </Link>
         </p>
-      </div>
+      </article>
     </div>
   );
-};
+}
 
 export default AuthForm;

@@ -1,21 +1,25 @@
-import Agent from "@/components/Agent";
-import { getCurrentUser } from "@/lib/actions/auth.action";
+import type { Metadata } from "next";
+import { getUserProfileFromSessionCookie } from "@/lib/actions/auth.action";
+import InterviewAgent from "@/components/InterviewAgent";
 
-const Page = async () => {
-  const user = await getCurrentUser();
+export const metadata: Metadata = {
+  title: "Generate Interview",
+};
+
+async function InterviewGenerationPage() {
+  const user = await getUserProfileFromSessionCookie();
 
   return (
     <>
-      <h3>Interview generation</h3>
+      <h3 className="capitalize mb-[2.5rem]">Generate interview</h3>
 
-      <Agent
-        userName={user?.name!}
-        userId={user?.id}
-        profileImage={user?.profileURL}
+      <InterviewAgent
         type="generate"
+        username={user?.name ?? "User"}
+        userId={user?.id}
       />
     </>
   );
-};
+}
 
-export default Page;
+export default InterviewGenerationPage;

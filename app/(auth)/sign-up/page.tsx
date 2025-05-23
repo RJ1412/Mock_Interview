@@ -1,7 +1,12 @@
+import type { Metadata } from "next";
 import AuthForm from "@/components/AuthForm";
 
-const Page = () => {
-  return <AuthForm type="sign-up" />;
+export const metadata: Metadata = {
+  title: "Sign up",
 };
 
-export default Page;
+function SignUpPage() {
+  return <AuthForm type="sign-up" />;
+}
+
+export default SignUpPage;

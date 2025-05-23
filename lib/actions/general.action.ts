@@ -2,22 +2,45 @@
 
 import { generateObject } from "ai";
 import { google } from "@ai-sdk/google";
-
-import { db } from "@/firebase/admin";
 import { feedbackSchema } from "@/constants";
+import { adminDB } from "@/firebase/admin";
 
-export async function createFeedback(params: CreateFeedbackParams) {
-  const { interviewId, userId, transcript, feedbackId } = params;
+type GenerateFeedbackError = {
+  code?: string;
+  message: string;
+};
+
+export async function generateFeedbackAction(params: GenerateFeedbackParams) {
+  const { interviewId, userId, transcript } = params;
+
+  if (!interviewId || !userId || transcript.length === 0) {
+    return {
+      success: false,
+      error: {
+        code: "INVALID_INPUT",
+        message: "Missing required parameters!",
+      } as GenerateFeedbackError,
+    };
+  }
 
   try {
     const formattedTranscript = transcript
       .map(
-        (sentence: { role: string; content: string }) =>
-          `- ${sentence.role}: ${sentence.content}\n`
+        (message: { role: string; content: string }) =>
+          `- ${message.role}: ${message.content}\n`
       )
       .join("");
 
-    const { object } = await generateObject({
+    // Assess the candidate
+    const {
+      object: {
+        totalScore,
+        categories,
+        strengths,
+        areasForImprovement,
+        finalAssessment,
+      },
+    } = await generateObject({
       model: google("gemini-2.0-flash-001", {
         structuredOutputs: false,
       }),
@@ -38,88 +61,41 @@ export async function createFeedback(params: CreateFeedbackParams) {
         "You are a professional interviewer analyzing a mock interview. Your task is to evaluate the candidate based on structured categories",
     });
 
-    const feedback = {
-      interviewId: interviewId,
-      userId: userId,
-      totalScore: object.totalScore,
-      categoryScores: object.categoryScores,
-      strengths: object.strengths,
-      areasForImprovement: object.areasForImprovement,
-      finalAssessment: object.finalAssessment,
+    const feedbackDocRef = await adminDB.collection("feedback").add({
+      interviewId,
+      userId,
+      totalScore,
+      categories,
+      strengths,
+      areasForImprovement,
+      finalAssessment,
       createdAt: new Date().toISOString(),
+    });
+
+    return {
+      success: true,
+      feedbackId: feedbackDocRef.id,
     };
+  } catch (err) {
+    console.error("Error generating feedback", err);
 
-    let feedbackRef;
-
-    if (feedbackId) {
-      feedbackRef = db.collection("feedback").doc(feedbackId);
-    } else {
-      feedbackRef = db.collection("feedback").doc();
+    if (err instanceof Error) {
+      return {
+        success: false,
+        error: {
+          message: err.message,
+          code: err.name === "Error" ? "UNKNOWN_ERROR" : err.name,
+        } as GenerateFeedbackError,
+      };
     }
 
-    await feedbackRef.set(feedback);
-
-    return { success: true, feedbackId: feedbackRef.id };
-  } catch (error) {
-    console.error("Error saving feedback:", error);
-    return { success: false };
+    // Fallback for unexpected error types
+    return {
+      success: false,
+      error: {
+        message: "An unexpected error occurred!",
+        code: "UNEXPECTED_ERROR",
+      } as GenerateFeedbackError,
+    };
   }
-}
-
-export async function getInterviewById(id: string): Promise<Interview | null> {
-  const interview = await db.collection("interviews").doc(id).get();
-
-  return interview.data() as Interview | null;
-}
-
-export async function getFeedbackByInterviewId(
-  params: GetFeedbackByInterviewIdParams
-): Promise<Feedback | null> {
-  const { interviewId, userId } = params;
-
-  const querySnapshot = await db
-    .collection("feedback")
-    .where("interviewId", "==", interviewId)
-    .where("userId", "==", userId)
-    .limit(1)
-    .get();
-
-  if (querySnapshot.empty) return null;
-
-  const feedbackDoc = querySnapshot.docs[0];
-  return { id: feedbackDoc.id, ...feedbackDoc.data() } as Feedback;
-}
-
-export async function getLatestInterviews(
-  params: GetLatestInterviewsParams
-): Promise<Interview[] | null> {
-  const { userId, limit = 20 } = params;
-
-  const interviews = await db
-    .collection("interviews")
-    .orderBy("createdAt", "desc")
-    .where("finalized", "==", true)
-    .where("userId", "!=", userId)
-    .limit(limit)
-    .get();
-
-  return interviews.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Interview[];
-}
-
-export async function getInterviewsByUserId(
-  userId: string
-): Promise<Interview[] | null> {
-  const interviews = await db
-    .collection("interviews")
-    .where("userId", "==", userId)
-    .orderBy("createdAt", "desc")
-    .get();
-
-  return interviews.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Interview[];
 }

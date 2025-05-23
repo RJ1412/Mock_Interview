@@ -1,94 +1,96 @@
-import Link from "next/link";
-import Image from "next/image";
-
+import type { Metadata } from "next";
+import { getUserProfileFromSessionCookie } from "@/lib/actions/auth.action";
+import {
+  fetchInterviewsByUserId,
+  fetchLatestInterviews,
+} from "@/lib/data/interviews";
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
+import Link from "next/link";
 import InterviewCard from "@/components/InterviewCard";
 
-import { getCurrentUser } from "@/lib/actions/auth.action";
-import {
-  getInterviewsByUserId,
-  getLatestInterviews,
-} from "@/lib/actions/general.action";
+export const metadata: Metadata = {
+  title: "Home",
+};
 
-async function Home() {
-  const user = await getCurrentUser();
-
-  const [userInterviews, allInterview] = await Promise.all([
-    getInterviewsByUserId(user?.id!),
-    getLatestInterviews({ userId: user?.id! }),
+async function HomePage() {
+  const user = await getUserProfileFromSessionCookie();
+  const [userInterviews, latestInterviews] = await Promise.all([
+    fetchInterviewsByUserId(user?.id),
+    fetchLatestInterviews({ userId: user?.id }),
   ]);
-
-  const hasPastInterviews = userInterviews?.length! > 0;
-  const hasUpcomingInterviews = allInterview?.length! > 0;
 
   return (
     <>
-      <section className="card-cta">
-        <div className="flex flex-col gap-6 max-w-lg">
-          <h2>Get Interview-Ready with AI-Powered Practice & Feedback</h2>
+      <div className="card-cta">
+        <section className="max-w-lg max-lg:text-center flex flex-col gap-6">
+          <h2>Chart Your Course to Interview Mastery with AI Guidance</h2>
+
           <p className="text-lg">
-            Practice real interview questions & get instant feedback
+            Navigate through real interview challenges and receive instant,
+            savvy feedback.
           </p>
 
-          <Button asChild className="btn-primary max-sm:w-full">
-            <Link href="/interview">Start an Interview</Link>
+          <Button type="button" asChild className="max-lg:w-full btn-primary">
+            <Link href="/interview">Generate an interview</Link>
           </Button>
-        </div>
+        </section>
 
         <Image
           src="/robot.png"
-          alt="robo-dude"
+          alt=""
           width={400}
           height={400}
-          className="max-sm:hidden"
+          className="hidden lg:block"
         />
-      </section>
+      </div>
 
-      <section className="flex flex-col gap-6 mt-8">
+      <section className="mt-8 flex flex-col gap-6">
         <h2>Your Interviews</h2>
 
-        <div className="interviews-section">
-          {hasPastInterviews ? (
-            userInterviews?.map((interview) => (
-              <InterviewCard
-                key={interview.id}
-                userId={user?.id}
-                interviewId={interview.id}
-                role={interview.role}
-                type={interview.type}
-                techstack={interview.techstack}
-                createdAt={interview.createdAt}
-              />
-            ))
+        {/* Current user generated interviews */}
+        <>
+          {userInterviews?.length > 0 ? (
+            <ul role="list" className="interviews-section">
+              {userInterviews.map((interview: Interview) => (
+                <InterviewCard
+                  key={interview.interviewId}
+                  isSelfGenerated={true}
+                  {...interview}
+                />
+              ))}
+            </ul>
           ) : (
-            <p>You haven&apos;t taken any interviews yet</p>
+            <p>You haven't taken any interviews yet!</p>
           )}
-        </div>
+        </>
       </section>
 
-      <section className="flex flex-col gap-6 mt-8">
-        <h2>Take Interviews</h2>
+      <section className="mt-8 flex flex-col gap-6">
+        <h2>Explore Interviews from Other Users</h2>
 
-        <div className="interviews-section">
-          {hasUpcomingInterviews ? (
-            allInterview?.map((interview) => (
-              <InterviewCard
-                key={interview.id}
-                userId={user?.id}
-                interviewId={interview.id}
-                role={interview.role}
-                type={interview.type}
-                techstack={interview.techstack}
-                createdAt={interview.createdAt}
-              />
-            ))
+        {/* Other users generated interviews */}
+        <>
+          {latestInterviews?.length > 0 ? (
+            <ul role="list" className="interviews-section">
+              {latestInterviews.map((interview: Interview) => (
+                <InterviewCard
+                  key={interview.interviewId}
+                  isSelfGenerated={false}
+                  {...interview}
+                />
+              ))}
+            </ul>
           ) : (
-            <p>There are no interviews available</p>
+            <p>
+              No interviews available at the moment. Check back later for new
+              ones!
+            </p>
           )}
-        </div>
+        </>
       </section>
     </>
   );
 }
 
-export default Home;
+export default HomePage;

@@ -1,8 +1,8 @@
 interface Feedback {
-  id: string;
+  feedbackId: string;
   interviewId: string;
   totalScore: number;
-  categoryScores: Array<{
+  categories: Array<{
     name: string;
     score: number;
     comment: string;
@@ -14,18 +14,19 @@ interface Feedback {
 }
 
 interface Interview {
-  id: string;
-  role: string;
-  level: string;
-  questions: string[];
-  techstack: string[];
-  createdAt: string;
+  interviewId: string;
   userId: string;
-  type: string;
+  userEmail: string;
+  interviewType: string;
+  jobRole: string;
+  experienceLevel: string;
+  techStack: string[];
+  questions: string[];
+  createdAt: string;
   finalized: boolean;
 }
 
-interface CreateFeedbackParams {
+interface GenerateFeedbackParams {
   interviewId: string;
   userId: string;
   transcript: { role: string; content: string }[];
@@ -41,14 +42,15 @@ interface User {
 interface InterviewCardProps {
   interviewId?: string;
   userId?: string;
-  role: string;
-  type: string;
-  techstack: string[];
+  interviewType: string;
+  jobRole: string;
+  techStack: string[];
   createdAt?: string;
+  isSelfGenerated: boolean;
 }
 
-interface AgentProps {
-  userName: string;
+interface InterviewAgentProps {
+  username: string;
   userId?: string;
   interviewId?: string;
   feedbackId?: string;
@@ -61,13 +63,13 @@ interface RouteParams {
   searchParams: Promise<Record<string, string>>;
 }
 
-interface GetFeedbackByInterviewIdParams {
+interface FetchFeedbackByInterviewIdParams {
   interviewId: string;
   userId: string;
 }
 
-interface GetLatestInterviewsParams {
-  userId: string;
+interface FetchLatestInterviewsParams {
+  userEmail: string | undefined;
   limit?: number;
 }
 
