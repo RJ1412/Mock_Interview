@@ -2,9 +2,9 @@ import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
 import { getRandomInterviewCoverImg } from "@/lib/utils";
 import { adminDB } from "@/firebase/admin";
+import { getAuth } from "firebase-admin/auth";
 
 // Health check route handler
-// Responds with a simple success message when a GET request is made
 export async function GET() {
   return Response.json(
     {
@@ -16,8 +16,7 @@ export async function GET() {
   );
 }
 
-// Interview generation route handler (Vapi AI assistant will make this post request! See Vapi's workflow)
-// Processes POST requests to generate interview questions and store interview details
+// POST route for interview generation
 export async function POST(request: Request) {
   if (request.method !== "POST") {
     return Response.json(
@@ -27,15 +26,34 @@ export async function POST(request: Request) {
   }
 
   try {
-    const requestBody = await request.json();
+    // 🔐 Extract and verify Firebase ID token from Authorization header
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return Response.json(
+        { success: false, error: "Missing or invalid authorization token" },
+        { status: 401 }
+      );
+    }
 
+    const idToken = authHeader.split("Bearer ")[1];
+    const decodedToken = await getAuth().verifyIdToken(idToken);
+    const userEmail = decodedToken.email;
+
+    if (!userEmail) {
+      return Response.json(
+        { success: false, error: "User email not found in token" },
+        { status: 403 }
+      );
+    }
+
+    // Parse request body
+    const requestBody = await request.json();
     const {
       interviewType,
       jobRole,
       experienceLevel,
       techStack,
       questionCount,
-      userId,
     } = requestBody;
 
     // Validate required fields
@@ -45,7 +63,6 @@ export async function POST(request: Request) {
       "experienceLevel",
       "techStack",
       "questionCount",
-      "userId",
     ].filter((field) => !requestBody[field]);
 
     if (missingFields.length > 0) {
@@ -59,7 +76,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Generate interview questions using Gemini
+    // 🧠 Generate interview questions using Gemini
     const { text: questions } = await generateText({
       model: google("gemini-2.0-flash-001"),
       prompt: `
@@ -73,12 +90,10 @@ export async function POST(request: Request) {
         The questions are going to be read by a voice assistant so do not use "/" or "*" or any other special characters which might break the voice assistant.
         Return the questions formatted like this:
         ["Question 1", "Question 2", "Question 3"]
-        
-        Thank you! <3
       `,
     });
 
-    // Prepare interview object for database storage
+    // 📦 Prepare interview data
     const interview = {
       interviewType,
       jobRole,
@@ -86,16 +101,15 @@ export async function POST(request: Request) {
       techStack: techStack.split(","),
       questionCount,
       questions: JSON.parse(questions),
-      userId,
+      userEmail,
       coverImageURL: getRandomInterviewCoverImg(),
       finalized: true,
       createdAt: new Date().toISOString(),
     };
 
-    // Store interview
+    // 📝 Store interview in Firestore
     const docRef = await adminDB.collection("interviews").add(interview);
 
-    // Return a success response with the generated interview ID
     return Response.json(
       {
         success: true,
@@ -105,27 +119,20 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (err) {
-    // Detailed error logging and response
     console.error("Interview Generation Error:", err);
 
-    // Differentiate between various error types
     if (err instanceof SyntaxError) {
       return Response.json(
-        {
-          success: false,
-          error: "Invalid JSON in request body!",
-        },
+        { success: false, error: "Invalid JSON in request body!" },
         { status: 400 }
       );
     }
 
-    // Generic server error for unexpected issues
     return Response.json(
       {
         success: false,
         error: "Internal Server Error",
-        details:
-          err instanceof Error ? err.message : "An unknown error occurred!",
+        details: err instanceof Error ? err.message : "An unknown error occurred!",
       },
       { status: 500 }
     );

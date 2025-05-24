@@ -2,13 +2,45 @@
 
 import { adminDB } from "@/firebase/admin";
 
-// Get interviews created by the current user
+// Get interviews created by the current user (by email now)
 export async function fetchInterviewsByUserId(
- email: string,
-  limit = 20
+  userEmail: string | undefined
 ): Promise<Interview[]> {
-  if (!email) {
-    console.warn("Attempted to fetch latest interviews with undefined email");
+  if (!userEmail) {
+    console.warn("Attempted to fetch user interviews with undefined email!");
+    return [];
+  }
+
+  try {
+    const snapshot = await adminDB
+      .collection("interviews")
+      .where("userEmail", "==", userEmail) // using email now
+      .orderBy("createdAt", "desc")
+      .get();
+
+    if (snapshot.empty) {
+      console.log(`No interviews found for user ${userEmail}`);
+      return [];
+    }
+
+    return snapshot.docs.map((doc) => ({
+      interviewId: doc.id,
+      ...(doc.data() as Omit<Interview, "interviewId">),
+    }));
+  } catch (err) {
+    console.error(`Error fetching interviews for user ${userEmail}:`, err);
+    return [];
+  }
+}
+
+// Get latest interviews created by other users (excluding current user's email)
+export async function fetchLatestInterviews(
+  params: FetchLatestInterviewsParams
+): Promise<Interview[]> {
+  const { userEmail, limit = 20 } = params;
+
+  if (!userEmail) {
+    console.warn("Attempted to fetch latest interviews with undefined user email");
     return [];
   }
 
@@ -17,68 +49,28 @@ export async function fetchInterviewsByUserId(
       .collection("interviews")
       .where("finalized", "==", true)
       .orderBy("createdAt", "desc")
-      .limit(limit * 2) // fetch extra in case some belong to current user
+      .limit(limit * 2) // over-fetch to allow client-side filtering
       .get();
 
     if (snapshot.empty) {
-      console.log(`No latest interviews found (excluding user email ${email})`);
+      console.log(`No latest interviews found (excluding user ${userEmail})`);
       return [];
     }
 
-    // Filter out interviews created by current user email
     const interviews = snapshot.docs
-      .map((doc) => ({ interviewId: doc.id, ...doc.data() }) as Interview)
-      .filter((interview) => interview.userEmail !== email)
+      .map((doc) => ({
+        interviewId: doc.id,
+        ...(doc.data() as Omit<Interview, "interviewId">),
+      }))
+      .filter((interview) => interview.userEmail !== userEmail)
       .slice(0, limit);
 
     return interviews;
   } catch (err) {
     console.error(
-      `Error fetching latest interviews (excluding user email ${email}):`,
+      `Error fetching latest interviews (excluding user ${userEmail}):`,
       err
     );
-    return [];
-  }
-}
-
-// Get latest interviews created by other users
-export async function fetchLatestInterviews(
-  params: FetchLatestInterviewsParams
-): Promise<Interview[]> {
-  const { userId, limit = 20 } = params; // Here, userId is again the current user's ID
-
-  if (!userId) {
-    console.warn("Attempted to fetch latest interviews with undefined user ID");
-
-    return [];
-  }
-
-  try {
-    const snapshot = await adminDB
-      .collection("interviews")
-      .orderBy("createdAt", "desc")
-      .where("userId", "!=", userId)
-      .where("finalized", "==", true)
-      .limit(limit)
-      .get();
-
-    if (snapshot.empty) {
-      console.log(`No latest interviews found (excluding user ${userId})`);
-
-      return [];
-    }
-
-    // Return latest interviews created by other users
-    return snapshot.docs.map((doc) => ({
-      interviewId: doc.id,
-      ...doc.data(),
-    })) as Interview[];
-  } catch (err) {
-    console.error(
-      `Error fetching latest interviews (excluding user ${userId}):`,
-      err
-    );
-
     return [];
   }
 }
@@ -89,19 +81,23 @@ export async function fetchInterviewDetailsById(
 ): Promise<Interview | null> {
   if (!id) {
     console.warn("Attempted to fetch interview with undefined ID!");
-
     return null;
   }
 
   try {
-    const interview = await adminDB.collection("interviews").doc(id).get();
+    const doc = await adminDB.collection("interviews").doc(id).get();
 
-    return interview?.data() as Interview | null;
+    if (!doc.exists) {
+      console.log(`Interview with ID ${id} not found.`);
+      return null;
+    }
+
+    return {
+      interviewId: doc.id,
+      ...(doc.data() as Omit<Interview, "interviewId">),
+    };
   } catch (err) {
     console.error(`Error fetching interview ${id}:`, err);
-
     return null;
   }
 }
-
-

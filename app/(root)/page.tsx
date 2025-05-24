@@ -17,7 +17,7 @@ async function HomePage() {
   const user = await getUserProfileFromSessionCookie();
   const [userInterviews, latestInterviews] = await Promise.all([
     fetchInterviewsByUserId(user?.id),
-    fetchLatestInterviews({ userId: user?.id }),
+    fetchLatestInterviews({ userEmail: user?.email }),
   ]);
 
   return (
