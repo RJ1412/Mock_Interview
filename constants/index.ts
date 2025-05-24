@@ -98,7 +98,7 @@ export const techStackMap = {
 };
 
 export const interviewer: CreateAssistantDTO = {
-  name: "RJ", 
+  name: "VoxNavi", // Interviewer's name
   firstMessage: "Hello! Thank you for taking the time to speak with me today. I'm excited to learn more about you and your experience.",
   transcriber: {
     provider: "deepgram",
